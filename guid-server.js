@@ -5,6 +5,7 @@ var _logger = logger(__dirname + '/' + configs.log.file);
 var qs = require('querystring');
 var fs = require('fs');
 console.log(configs.redis.host + ':' + configs.redis.port);
+var selfStockProxyService = require('./lib/selfstockproxy');
 var redis = require("redis");
 /**
  * redisclient对应database 1,该库用户存储guid:idcoe 对应关系
@@ -164,7 +165,7 @@ app.get('/getIDCodeByGUID', function(req, res) {
   redisClient.get(guid, function(err, replies) {
     if (null === replies) {
       var result = {
-        error: 'guid not exist',
+        error: 'GUID_NOT_EXIST',
         idcode: ''
       }
       res.end(JSON.stringify(result));
@@ -207,10 +208,10 @@ app.get('/GetMSISDNByIDCode', function(req, res) {
   var idcode = req.query.idcode;
   if (idcode == undefined) {
     var result = {
-        error: 'NOT_INPUT_IDCODE',
-        msisdn: ''
-      }
-      res.end(JSON.stringify(result));
+      error: 'NOT_INPUT_IDCODE',
+      msisdn: ''
+    }
+    res.end(JSON.stringify(result));
   } else {
     redisClient2.get(idcode, function(err, replies) {
       if (null === replies) {
@@ -242,7 +243,7 @@ app.get('/GetMSISDNByGUID', function(req, res) {
   redisClient.get(guid, function(err, replies) {
     if (null === replies) {
       var result = {
-        error: 'not bind msisdn',
+        error: 'NOT_BIND_MSISDN',
         msisdn: ''
       }
       res.end(JSON.stringify(result));
@@ -265,49 +266,65 @@ app.get('/GetMSISDNByGUID', function(req, res) {
 app.get('/MoBind', function(req, res) {
   var guid = req.query.guid;
   var msisdn = req.query.msisdn;
-  redisClient.get(guid, function(err, replies) {
-    if (null === replies) {
-      var result = {
-        error: 'client not get guid from server',
-        msg: 'error'
-      }
-      res.end(JSON.stringify(result));
-    } else {
-      var temp = JSON.parse(replies);
-      //新绑定用户
-      if (temp.msisdn == undefined || temp.msisdn == '') {
-        var obj = {
-          idcode: temp.idcode,
-          msisdn: msisdn
-        };
-        redisClient.set(guid, JSON.stringify(obj));
-        var obj4idcode = {
-          guid: guid,
-          msisdn: msisdn
-        };
-        redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
-      } else if (temp.msisdn != msisdn) { //重新绑定手机号
-        //TODO 用户重新绑定，记录
-        var obj = {
-          idcode: temp.idcode,
-          msisdn: msisdn
-        };
-        redisClient.set(guid, JSON.stringify(obj));
-        var obj4idcode = {
-          guid: guid,
-          msisdn: msisdn
-        };
-        redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
-      } else {
-        //do nothing
-      }
-      var result = {
-        error: null,
-        msg: 'ok'
-      }
-      res.end(JSON.stringify(result));
+  if (guid == undefined || guid == '' || msisdn == '' || msisdn == undefined) {
+    var result = {
+      error: 'need guid or msisdn',
+      msg: 'error'
     }
-  });
+    res.end(JSON.stringify(result));
+  } else {
+    redisClient.get(guid, function(err, replies) {
+      if (null === replies) {
+        var result = {
+          error: 'client not get guid from server',
+          msg: 'error'
+        }
+        res.end(JSON.stringify(result));
+      } else {
+        var temp = JSON.parse(replies);
+        //新绑定用户
+        if (temp.msisdn == undefined || temp.msisdn == '') {
+          var obj = {
+            idcode: temp.idcode,
+            msisdn: msisdn
+          };
+          redisClient.set(guid, JSON.stringify(obj));
+          var obj4idcode = {
+            guid: guid,
+            msisdn: msisdn
+          };
+          selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
+            console.log(result);
+          });
+          redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
+
+        } else if (temp.msisdn != msisdn) { //重新绑定手机号
+          //TODO 用户重新绑定，记录
+          var obj = {
+            idcode: temp.idcode,
+            msisdn: msisdn
+          };
+          redisClient.set(guid, JSON.stringify(obj));
+          var obj4idcode = {
+            guid: guid,
+            msisdn: msisdn
+          };
+          selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
+            console.log(result);
+          });
+          redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
+
+        } else {
+          //do nothing
+        }
+        var result = {
+          error: null,
+          msg: 'ok'
+        }
+        res.end(JSON.stringify(result));
+      }
+    });
+  }
 });
 
 app.get('/Test', function(req, res) {
