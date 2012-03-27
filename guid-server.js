@@ -90,7 +90,8 @@ var getIDCode = function(guid, cb) {
         cb(replies);
       });
     } else {
-      cb(JSON.parse(replies));
+      var temp = JSON.parse(replies);
+      cb(temp.idcode);
     }
   });
 };
