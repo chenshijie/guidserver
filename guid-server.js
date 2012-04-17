@@ -96,6 +96,16 @@ var getIDCode = function(guid, cb) {
   });
 };
 
+var genSerial = function(gw) {
+  var seq = 0;
+  return function() {
+    seq = ++seq % 0xffff;
+    return (gw + new Date().getTime().toString(36) + (seq | 0x10000).toString(16).substr(1)).toUpperCase();
+  };
+};
+
+var getSerial = genSerial('S');
+
 /**
  * genGUID 生成GUID
  * @param  {string} data   [客户端特征]
@@ -121,9 +131,15 @@ var genGUID = function(data, msisdn) {
   var guid = utils.md5(guid_base_str);
   guid = guid + utils.genCheckSum(guid);
   redisClient3.set(guid, JSON.stringify(options));
+  //为GUID生成一个验证码用于短信上行
+  var vCode = getSerial();
+  var vCodeKey = 'VCODE:' + vCode;
+  var timeLeft = 60 * 60; //验证码一个小时
+  redisClient3.setex(vCodeKey, timeLeft, guid);
   var result = {
     error: null,
-    guid: guid
+    guid: guid,
+    vcode: vCode
   };
   return result;
 };
@@ -265,64 +281,78 @@ app.get('/GetMSISDNByGUID', function(req, res) {
  * @return {[type]}     [description]
  */
 app.get('/MoBind', function(req, res) {
-  var guid = req.query.guid;
+  var vCode = req.query.guid;
+  var vCodeKey = 'VCODE:' + vCode;
   var msisdn = req.query.msisdn;
-  if (guid == undefined || guid == '' || msisdn == '' || msisdn == undefined) {
+  console.log(vCode);
+  console.log(msisdn);
+  console.log(vCodeKey);
+  if (undefined == vCode || '' == vCode || undefined == msisdn || '' == msisdn) {
     var result = {
-      error: 'need guid or msisdn',
-      msg: 'error'
+      error: 'PARAMS_ERROR',
+      msg: '缺少必要参数'
     }
     res.end(JSON.stringify(result));
   } else {
-    redisClient.get(guid, function(err, replies) {
-      if (null === replies) {
+    redisClient3.get(vCodeKey, function(error, guid) {
+      if (null == guid) {
         var result = {
-          error: 'client not get guid from server',
-          msg: 'error'
+          error: 'RECEIVE_VCODE_TIME_OUT',
+          msg: '生成验证码后一个小时才收到短信'
         }
         res.end(JSON.stringify(result));
       } else {
-        var temp = JSON.parse(replies);
-        //新绑定用户
-        if (temp.msisdn == undefined || temp.msisdn == '') {
-          var obj = {
-            idcode: temp.idcode,
-            msisdn: msisdn
-          };
-          redisClient.set(guid, JSON.stringify(obj));
-          var obj4idcode = {
-            guid: guid,
-            msisdn: msisdn
-          };
-          selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
-            console.log(result);
-          });
-          redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
+        redisClient.get(guid, function(err, replies) {
+          if (null === replies) {
+            var result = {
+              error: 'client not get guid from server',
+              msg: 'error'
+            }
+            res.end(JSON.stringify(result));
+          } else {
+            var temp = JSON.parse(replies);
+            //新绑定用户
+            if (temp.msisdn == undefined || temp.msisdn == '') {
+              var obj = {
+                idcode: temp.idcode,
+                msisdn: msisdn
+              };
+              redisClient.set(guid, JSON.stringify(obj));
+              var obj4idcode = {
+                guid: guid,
+                msisdn: msisdn
+              };
+              selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
+                console.log(result);
+              });
+              redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
 
-        } else if (temp.msisdn != msisdn) { //重新绑定手机号
-          //TODO 用户重新绑定，记录
-          var obj = {
-            idcode: temp.idcode,
-            msisdn: msisdn
-          };
-          redisClient.set(guid, JSON.stringify(obj));
-          var obj4idcode = {
-            guid: guid,
-            msisdn: msisdn
-          };
-          selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
-            console.log(result);
-          });
-          redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
+            } else if (temp.msisdn != msisdn) { //重新绑定手机号
+              //TODO 用户重新绑定，记录
+              var obj = {
+                idcode: temp.idcode,
+                msisdn: msisdn
+              };
+              redisClient.set(guid, JSON.stringify(obj));
+              var obj4idcode = {
+                guid: guid,
+                msisdn: msisdn
+              };
+              selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
+                console.log(result);
+              });
+              redisClient2.set(temp.idcode, JSON.stringify(obj4idcode));
 
-        } else {
-          //do nothing
-        }
-        var result = {
-          error: null,
-          msg: 'ok'
-        }
-        res.end(JSON.stringify(result));
+            } else {
+              //do nothing
+            }
+            var result = {
+              error: null,
+              msg: 'ok'
+            }
+            res.end(JSON.stringify(result));
+          }
+        });
       }
     });
   }
