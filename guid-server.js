@@ -81,12 +81,12 @@ var getIDCode = function(guid, cb) {
   redisClient.get(guid, function(err, replies) {
     if (null === replies) {
       redisClient.incr('MSISDN_SEQ', function(err, replies) {
-        var oContent = {
-          idcode: replies,
-          msisdn: ''
-        };
-        var sContent = JSON.stringify(oContent);
-        redisClient.set(guid, sContent);
+        // var oContent = {
+        //   idcode: replies,
+        //   msisdn: ''
+        // };
+        // var sContent = JSON.stringify(oContent);
+        // redisClient.set(guid, sContent);
         cb(replies);
       });
     } else {
@@ -160,7 +160,8 @@ app.post('/getGUID', function(req, res) {
         getIDCode(result.guid, function(idcode) {
           var obj = {
             idcode: idcode,
-            msisdn: ''
+            msisdn: '',
+            bindtime: 0
           };
           redisClient.set(result.guid, JSON.stringify(obj));
           var obj4idcode = {
@@ -313,9 +314,11 @@ app.get('/MoBind', function(req, res) {
             var temp = JSON.parse(replies);
             //新绑定用户
             if (temp.msisdn == undefined || temp.msisdn == '') {
+              var timeStamp = utils.getTimestamp();
               var obj = {
                 idcode: temp.idcode,
-                msisdn: msisdn
+                msisdn: msisdn,
+                bindtime: timeStamp
               };
               redisClient.set(guid, JSON.stringify(obj));
               var obj4idcode = {
@@ -333,10 +336,12 @@ app.get('/MoBind', function(req, res) {
                 idcode: temp.idcode,
                 msisdn: msisdn
               };
+              var timeStamp = utils.getTimestamp();
               redisClient.set(guid, JSON.stringify(obj));
               var obj4idcode = {
                 guid: guid,
-                msisdn: msisdn
+                msisdn: msisdn,
+                bindtime: timeStamp
               };
               selfStockProxyService.noticeProxyMSISDNBind(temp.idcode, msisdn, function(result) {
                 console.log(result);
