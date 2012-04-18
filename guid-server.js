@@ -184,14 +184,17 @@ app.get('/getIDCodeByGUID', function(req, res) {
     if (null === replies) {
       var result = {
         error: 'GUID_NOT_EXIST',
-        idcode: ''
+        idcode: '',
+        bindtime: 0
       }
       res.end(JSON.stringify(result));
     } else {
       var temp = JSON.parse(replies);
+      var bindTime = temp.bindtime == undefined ?  0 : temp.bindtime;
       var result = {
         error: null,
-        idcode: temp.idcode
+        idcode: temp.idcode,
+        bindtime: bindTime
       }
       res.end(JSON.stringify(result));
     }
