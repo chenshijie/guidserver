@@ -153,7 +153,7 @@ app.post('/getGUID', function(req, res) {
     console.log(body);
     var result = genGUID(body);
     res.end(JSON.stringify(result));
-    redisClient.get(result.guid, function(r) {
+    redisClient.get(result.guid, function(err, r) {
       if (null == err && null != r && '' != r) {
         //do nothing
       } else {
